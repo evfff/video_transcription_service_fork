@@ -1,0 +1,65 @@
+# Имя проекта — гарантирует изоляцию от других docker-compose на машине
+name: video-transcription-svc
+
+services:
+  # ──────────────────────────────────────────────
+  #  Backend — FastAPI транскрибация (порт 8020)
+  # ──────────────────────────────────────────────
+  vts-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: videotranscription-api
+    restart: unless-stopped
+    ports:
+      - "8020:8020"
+    volumes:
+      # Папка с видеофайлами — бросай сюда .mp4 / .webm / .mkv
+      - ./data/inbox:/app/data/inbox
+      # Конфиг — редактируй config.yaml и перезапускай сервис
+      - ./config.yaml:/app/config.yaml:ro
+      # Кэш Whisper моделей (чтобы не скачивать при перезапуске)
+      - whisper-cache:/root/.cache/huggingface
+    environment:
+      # Путь к конфигу внутри контейнера
+      - CONFIG_PATH=/app/config.yaml
+      # (опционально) Путь к Obsidian vault если obsidian_export_enabled=true
+      # - OBSIDIAN_VAULT_PATH=/obsidian/vault
+      # (опционально) HuggingFace токен для диаризации (pyannote)
+      # - HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      # (опционально) Разрешённые CORS-origins (по умолчанию: localhost:3020)
+      - CORS_ORIGINS=http://localhost:3020,http://127.0.0.1:3020
+    # Если нужен Obsidian — раскомментируй и укажи путь:
+    # volumes дополнительно:
+    #   - /path/to/your/obsidian/vault:/obsidian/vault
+    extra_hosts:
+      # Позволяет обращаться к host.docker.internal (LM Studio на хосте)
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8020/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ──────────────────────────────────────────────
+  #  Frontend — Next.js UI (порт 3020)
+  # ──────────────────────────────────────────────
+  vts-ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: videotranscription-ui
+    restart: unless-stopped
+    ports:
+      - "3020:3000"
+    environment:
+      # URL бэкенда (доступен снаружи контейнера — для браузера пользователя)
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8020
+    depends_on:
+      vts-api:
+        condition: service_healthy
+
+volumes:
+  whisper-cache:
+    name: vts-whisper-cache
