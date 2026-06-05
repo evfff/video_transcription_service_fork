@@ -1,5 +1,4 @@
-# video_transcription_service_fork
-# Video Transcription Service
+# Video Transcription Service 
 
 Автономный сервис транскрибации и анализа видеозаписей встреч.
 
